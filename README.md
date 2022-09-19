@@ -1,9 +1,10 @@
-# rails-awesome-tests
+# Rails Awesome Tests
 
 Inspired by [wroc_love.rb 2022](https://wrocloverb.com/) presentation, this is a collection of tools and advices how to shorten feedback loop from your tests.
 
 # Presentation
-Presentation went how through the 1960s, 1970s and 1980s running code shortened feedback loop. For some developers expected code change can give feedback loop in similiar times to those like in 1960s or later. 
+
+Presentation went how through the 1960s, 1970s and 1980s we shortened our feedback loop by moving from indirect to direct access to our computers and automated testing. However, for some developers expected code change can give feedback loop in similiar times to those like in 1960s or later. This is because we still tend to delegate running our code to shared environments (like CI servers) and making our local setups unfit for exploratory programming and debugging. 
 
 ## FEEDBACK LOOP SHORTENING 101
 
@@ -13,47 +14,59 @@ Presentation went how through the 1960s, 1970s and 1980s running code shortened 
 
 
 ## Get faster computer
+
+Measure how often you wait for your hardware during development in testing. Consider multiplying this time by your hourly rate and see what upgrades make sense. Remember that CI is also a computer that you use, so include it in those measurements.
+
+Try to answer the following questions:
+
  * How many builds are waiting in the queue?
- * How many PRs need to be rebased before they finish their build?
+ * How many stale PRs need to be rebased before they can get merged?
  * How much is a faster CI server?
 
-**Reducing 10 minutes of test suite, on span of 5 test runs per day (1000 minutes) can save ~ 530 USD/monthly from developer cost**
+**Reducing 10 minutes of test suite, on span of 5 test runs per day (1000 minutes) can save ~530 USD/monthly from developer cost**
 
-### Github self hosted runners
-A good cost effective solution to slow CI is getting dedicated server and installing docker and simple custom script to run tests. This dedicated machine can have 2x or 4x more power than your current CI and still be cheaper.
+### [GitHub self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners)
+
+A good cost effective solution to slow CI is getting dedicated server and installing docker and simple custom script to run tests. This dedicated machine can often have 2x or 4x more power than your current CI and still be cheaper.
 
 ## Run stuff locally
-1. Allow for prototyping:
-   * Mock external services early
-   * Don’t be afraid to test stuff out in rails console (even on...gasp...prod)
-   * Use feature flags to hide unfinished features
 
+1. Allow for prototyping:
+   * Mock external services early, make sure other developers can use those mocks without any setup
+   * Write code and test in rails console, even on production if you need to validate your assumptions about the data
+   * Use [feature flags](https://github.com/jnunemaker/flipper) to hide unfinished features.
+   
 2. Simplify your setup
-   * Dockerize the dependencies
+   * Dockerize the dependencies, even if you don't develop your application in docker
    * Provide defaults for all the ENV variables
-   * Reduce the number of setup steps.
-bundle + db:setup + rails c is preferable, docker-compose (or equivalent) is also good.
+   * Reduce the number of setup steps:
+
+   `bundle && db:setup && rails c` is preferable, `docker-compose up` (or equivalent) is also good.
 
 3. Scrutinize your dependencies (Gemfile)
-   * How many gems are in your Gemfile?
-   * How many configurations and default values are there?
+   * How many gems are in your Gemfile? When did you last time check if you can prune some of them?
+   * How many configurations and default values are there? Are there any rspec/minitest configs for those?
 4. Plant seeds
    * Good seeds help to get application in usable state quicker
+   * Having users with *known* passwords make developers use the same accounts with the same settings
+   * Having a complete set of seeds allows for easy resetting of the state when jumping between branches and working on different tasks
+
 5. Don't ignore docker
    * Docker images are dependencies too
-   * Big docker images are slow to download
+   * Big docker images are slow to download, [try to make them smaller](https://phoenixnap.com/kb/docker-image-size), make sure they are cached on CI
 
 ## Get results quicker
-Speed up your tests: **15 minutes full suite tops**
+Speed up your tests: **15 minutes full suite tops**. The longer it takes to run the tests the more focus the developers lose.
 
-### `ag sleep spec`
- * Don’t sleep in your tests
+### `ag sleep spec` 
+ * Don’t sleep in your tests, especially in Capybara tests, since [they provide much better solutions](https://www.varvet.com/blog/why-wait_until-was-removed-from-capybara/).
  * If your code is dependant on sleep, you can never optimize it - it will break on slow machines, and it will waste sleep time on fast machines.
 
-### grep for - other things
+### Grep your specs for other things
  * Loops, especially dynamically creating tests
-   * they usually test the same thing, but with different data
- * shared_context & shared_example
+   * they usually test the same thing, but with different data, they are very easy to extend, so developers will add more items over time
+ * shared_context & shared_example 
+   * again, very easy to add in multiple places, often testing the same underlying implementation
  * File loading
    * use small files if testing, adding 25mb user avatar thumbnail is a good idea to slow down whole suite, especially on slow CI server
 
@@ -63,14 +76,15 @@ Often chosen as first lifeline to speed up tests. It is a good idea, but it is n
 On downside, unoptimized parallel tests will not shorten feedback loop, but will increase it. Split your tests evenly, if one test is 10x slower than other, it will slow down whole suite.
 
 Other downsides:
- * Setup takes more time 
- * Separation isn’t always complete, look for file system access and cache 
+
+ * Setup takes more time (consider setting up database once and cloning images, benchmark what makes sense for your use case)
+ * Separation isn’t always complete, look for file system access, databases and cache (ElasticSearch, Redis and/or Memcached)
  * If you have a small subset of very slow tests you might not benefit from it
 
 Some tools to help you with parallel testing:
- * <https://github.com/grosser/parallel_tests>
+ * <https://github.com/grosser/parallel_tests> - make sure you use previous run timings to get a more even split
  * <https://knapsackpro.com/>
-   * optimizes parallel worker so that each gets about same time for all tests
+   * optimizes parallel worker so that each gets about same time for all tests, paid solution
  * <https://github.com/tmm1/test-queue>
    * really good locally, but troublesome to setup on CI
      * if anyone has a good guide, please share
@@ -78,7 +92,7 @@ Some tools to help you with parallel testing:
 ### Lean setup
 For tests where some endpoint takes a long time, you want to limit amount of times you execute the slow code, but putting all expectations in one block will not give you all failure messages because it will stop on first one.
 
-**Unless you use `:aggregate_failures` flag** this flag will collect all failures and report them for this one run.
+**Unless you use [`:aggregate_failures`](https://relishapp.com/rspec/rspec-core/docs/expectation-framework-integration/aggregating-failures) flag** this flag will collect all failures and report them for this one run.
 
 ```ruby
 let! (:gazillion_records_worth_of_data) { create(:life_universe_and_everything) }
@@ -90,10 +104,12 @@ it 'has a valid response', :aggregate_failures do
 end
 ```
 
+This approach works great for grouping tests with the same setup, but different expectations.
+
 ### TestProf by EvilMartians
 <https://test-prof.evilmartians.io/#/> is a collection of different tools to analyze your test suite performance. This isn't a specific tool but a guide how to approach slow testing suite.
 
-Github: <https://github.com/test-prof/test-prof>
+GitHub: <https://github.com/test-prof/test-prof>
 
 #### Factory cascades
 Let’s create a user, which has to be in a company, which needs an address, which needs a country,
