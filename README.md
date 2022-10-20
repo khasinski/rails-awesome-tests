@@ -190,6 +190,47 @@ RSpec.configure do |config|
 end
 ```
 
+### Running tests with GC disabled
+
+According to [an article](https://makandracards.com/makandra/950-speed-up-rspec-by-deferring-garbage-collection) you can get about 15% performance improvement by deferring GC (depending on the nature of your tests, CPU-intensive tests might benefit more from it, IO-bound test might not).
+
+The code goes as follows:
+```ruby
+# spec/support/deferred_garbage_collection.rb
+
+class DeferredGarbageCollection
+  DEFERRED_GC_THRESHOLD = (ENV['DEFER_GC'] || 10.0).to_f
+
+  @@last_gc_run = Time.now
+
+  def self.start
+    GC.disable if DEFERRED_GC_THRESHOLD > 0
+  end
+
+  def self.reconsider
+    if DEFERRED_GC_THRESHOLD > 0 && Time.now - @@last_gc_run >= DEFERRED_GC_THRESHOLD
+      GC.enable
+      GC.start
+      GC.disable
+      @@last_gc_run = Time.now
+    end
+  end
+
+end
+```
+```ruby
+# spec_helper.rb (modified for RSpec, original used Spec which is now obsolete)
+
+RSpec.configure do |config|
+  config.before(:all) do
+    DeferredGarbageCollection.start
+  end
+  config.after(:all) do
+    DeferredGarbageCollection.reconsider
+  end
+end
+```
+
 ### Run the database in RAM
 If you are bound by database performance in tests, you can use this lifeline to speed up your tests.
 
